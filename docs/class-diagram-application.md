@@ -1,0 +1,103 @@
+# Diagrama de clases — Aplicación
+
+> Documento generado automáticamente por `generate-documentation.yml` — no editar a mano.
+
+Controladores, servicios y contexto de datos.
+
+```mermaid
+classDiagram
+    direction LR
+    class ApiControllerBase {
+        #CanManage(tournament) bool
+        #CanManage(team) bool
+        #Fail(statusCode, detail) ObjectResult
+        #BadRule(detail) ObjectResult
+        #Forbidden(detail) ObjectResult
+        #NotFoundProblem(detail) ObjectResult
+        #ConflictProblem(detail) ObjectResult
+    }
+    class AuthController {
+        +Register(request) AuthResponse
+        +Login(request) AuthResponse
+        +Me() UserDto
+    }
+    class DatabaseConfig {
+        +AddAppDatabase(services, config) IServiceCollection
+        +FromDatabaseUrl(databaseUrl) string
+    }
+    class DbSeeder {
+        +Seed(db, hasher) void
+    }
+    class FixtureGenerator {
+        +RoundRobin(teamIds, firstRoundDate, daysBetweenRounds) IReadOnlyList~FixtureMatch~
+        +KnockoutRound(teamIds, round, date) IReadOnlyList~FixtureMatch~
+        +IsPowerOfTwo(n) bool
+        +Shuffle(items) List~int~
+    }
+    class FixtureMatch {
+        <<record>>
+        +int Round
+        +int HomeTeamId
+        +int AwayTeamId
+        +DateTime ScheduledAt
+    }
+    class ITokenService {
+        <<interface>>
+    }
+    class JwtSettings {
+        +string Key
+        +string Issuer
+        +string Audience
+        +int ExpirationMinutes
+    }
+    class MatchesController {
+        +GetAll(tournamentId, teamId, userId, from, to) IEnumerable~MatchDto~
+        +GetById(id) MatchDto
+        +Create(request) MatchDto
+        +Update(id, request) MatchDto
+        +SetResult(id, request) MatchDto
+        +Cancel(id) MatchDto
+        +Delete(id) IActionResult
+    }
+    class StandingsCalculator {
+        +Calculate(teams, matches) IReadOnlyList~StandingDto~
+    }
+    class TeamsController {
+        +GetAll(userId, search) IEnumerable~TeamDto~
+        +MyRegistrations() IEnumerable~MyRegistrationDto~
+        +GetById(id) TeamDto
+        +Create(request) TeamDto
+        +Update(id, request) TeamDto
+        +Delete(id) IActionResult
+        +AddPlayer(id, request) PlayerDto
+        +UpdatePlayer(id, playerId, request) PlayerDto
+        +DeletePlayer(id, playerId) IActionResult
+    }
+    class TokenService {
+        +CreateToken(user) (stringToken,DateTimeExpiresAt)
+    }
+    class TournamentsController {
+        +GetAll(status, sport, search, organizerId) IEnumerable~TournamentSummaryDto~
+        +GetById(id) TournamentDetailDto
+        +Create(request) TournamentDetailDto
+        +Update(id, request) TournamentDetailDto
+        +ChangeStatus(id, request) TournamentDetailDto
+        +Delete(id) IActionResult
+        +GetRegistrations(id) IEnumerable~RegistrationDto~
+        +Register(id, request) RegistrationDto
+        +ChangeRegistrationStatus(id, registrationId, request) RegistrationDto
+        +CancelRegistration(id, registrationId) IActionResult
+        +GenerateFixture(id, request) IEnumerable~MatchDto~
+        +NextRound(id, request) IEnumerable~MatchDto~
+        +DeleteFixture(id) IActionResult
+        +Standings(id) IEnumerable~StandingDto~
+        +...1 más()
+    }
+    AuthController --|> ApiControllerBase
+    AuthController ..> ITokenService : usa
+    MatchesController --|> ApiControllerBase
+    TeamsController --|> ApiControllerBase
+    TokenService ..|> ITokenService
+    TokenService ..> JwtSettings : usa
+    TournamentsController --|> ApiControllerBase
+```

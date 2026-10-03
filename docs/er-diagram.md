@@ -1,0 +1,75 @@
+# Diagrama entidad-relación
+
+> Documento generado automáticamente por `generate-documentation.yml` — no editar a mano.
+
+Generado desde el esquema real de PostgreSQL.
+
+```mermaid
+erDiagram
+    tournaments ||--o{ matches : "TournamentId"
+    teams ||--o{ matches : "HomeTeamId"
+    teams ||--o{ matches : "AwayTeamId"
+    teams ||--o{ players : "TeamId"
+    tournaments ||--o{ registrations : "TournamentId"
+    teams ||--o{ registrations : "TeamId"
+    users ||--o{ teams : "OwnerId"
+    users ||--o{ tournaments : "OrganizerId"
+    matches {
+        int Id PK "Identificador del partido."
+        int Round "Jornada o ronda."
+        datetime ScheduledAt "Fecha y hora programada (UTC)."
+        string Venue "Sede o cancha."
+        string Status "Estado: Scheduled, Played o Cancelled."
+        int HomeScore "Goles/puntos del equipo local."
+        int AwayScore "Goles/puntos del equipo visitante."
+        int TournamentId FK "Torneo (FK tournaments)."
+        int HomeTeamId FK "Equipo local (FK teams)."
+        int AwayTeamId FK "Equipo visitante (FK teams)."
+    }
+    players {
+        int Id PK "Identificador del jugador."
+        string FullName "Nombre completo del jugador."
+        int JerseyNumber "Número de camiseta (0-99, único por equipo)."
+        string Position "Posición de juego."
+        datetime BirthDate "Fecha de nacimiento."
+        int TeamId FK "Equipo al que pertenece (FK teams)."
+    }
+    registrations {
+        int Id PK "Identificador de la inscripción."
+        string Status "Estado: Pending, Approved o Rejected."
+        datetime RegisteredAt "Fecha de inscripción (UTC)."
+        int TournamentId FK "Torneo (FK tournaments)."
+        int TeamId FK "Equipo inscrito (FK teams)."
+    }
+    teams {
+        int Id PK "Identificador del equipo."
+        string Name UK "Nombre del equipo (único)."
+        string City "Ciudad de procedencia."
+        string LogoUrl "URL del logo."
+        datetime CreatedAt "Fecha de creación (UTC)."
+        int OwnerId FK "Usuario capitán/dueño del equipo (FK users)."
+    }
+    tournaments {
+        int Id PK "Identificador del torneo."
+        string Name "Nombre del torneo."
+        string Description "Descripción general."
+        string Sport "Deporte (Fútbol, Básquet, etc.)."
+        string Category "Categoría (Libre, Sub-17, Femenino, etc.)."
+        string Rules "Reglamento del torneo."
+        string Format "Formato: RoundRobin (todos contra todos) o Knockout (eliminación)."
+        string Status "Estado: Draft, RegistrationOpen, InProgress o Finished."
+        int MaxTeams "Número máximo de equipos."
+        datetime StartDate "Fecha de inicio (UTC)."
+        datetime EndDate "Fecha de fin (UTC)."
+        datetime CreatedAt "Fecha de creación (UTC)."
+        int OrganizerId FK "Usuario organizador (FK users)."
+    }
+    users {
+        int Id PK "Identificador del usuario."
+        string FullName "Nombre completo."
+        string Email UK "Correo electrónico (único, usado para iniciar sesión)."
+        string PasswordHash "Hash de la contraseña (PBKDF2)."
+        string Role "Rol: Player, Organizer o Admin."
+        datetime CreatedAt "Fecha de registro (UTC)."
+    }
+```
