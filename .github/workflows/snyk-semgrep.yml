@@ -21,7 +21,7 @@ jobs:
     container:
       image: semgrep/semgrep
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: semgrep scan
         run: |
           mkdir -p reports
@@ -38,6 +38,18 @@ jobs:
             --sarif-output=reports/semgrep.sarif \
             --json-output=reports/semgrep.json \
             --text-output=reports/semgrep.txt
+      - name: Publicar hallazgos como anotaciones
+        if: always()
+        shell: python
+        run: |
+          import json, os
+          path = "reports/semgrep.json"
+          if os.path.exists(path):
+              for r in json.load(open(path)).get("results", []):
+                  sev = r["extra"].get("severity", "WARNING")
+                  level = "error" if sev == "ERROR" else "warning"
+                  msg = r["extra"]["message"].replace("\n", " ")[:400]
+                  print(f"::{level} file={r['path']},line={r['start']['line']},title={r['check_id']}::{msg}")
       - name: Resumen
         if: always()
         run: |
@@ -47,12 +59,12 @@ jobs:
             if [ -s reports/semgrep.txt ]; then cat reports/semgrep.txt; else echo "Sin hallazgos."; fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: reporte-semgrep
           path: reports/
-      - uses: github/codeql-action/upload-sarif@v3
+      - uses: github/codeql-action/upload-sarif@v4
         if: always()
         continue-on-error: true # requiere GitHub Advanced Security en repos privados
         with:
@@ -65,11 +77,11 @@ jobs:
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
         with:
           dotnet-version: "10.0.x"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
       - name: Restaurar dependencias
@@ -96,7 +108,7 @@ jobs:
           for f in reports/snyk-*.json; do
             [ -s "$f" ] && snyk-to-html -i "$f" -o "${f%.json}.html" || true
           done
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: reporte-snyk-codigo
@@ -117,7 +129,7 @@ jobs:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
       IMAGE: torneo-${{ matrix.name }}:${{ github.sha }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Construir imagen
         run: docker build -t "$IMAGE" ${{ matrix.context }}
       - name: Instalar Snyk CLI
@@ -143,7 +155,7 @@ jobs:
             count=$(jq '[.vulnerabilities[]?] | length' "$f")
             echo "## Snyk Container ${{ matrix.name }}: $count vulnerabilidades" >> "$GITHUB_STEP_SUMMARY"
           fi
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: reporte-snyk-container-${{ matrix.name }}

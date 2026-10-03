@@ -41,7 +41,7 @@ jobs:
       run:
         working-directory: ${{ env.TF_DIR }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "~1.9"
@@ -62,7 +62,7 @@ jobs:
       run:
         working-directory: ${{ env.TF_DIR }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Verificar secretos
         run: |
@@ -136,7 +136,7 @@ jobs:
 
       - name: Guardar estado
         if: always() && (env.ACTION == 'apply' || env.ACTION == 'destroy')
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: terraform-state
           path: ${{ env.TF_DIR }}/terraform.tfstate.gpg
@@ -144,7 +144,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Guardar plan
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: terraform-plan-${{ env.ACTION }}
           path: ${{ env.TF_DIR }}/plan.txt
