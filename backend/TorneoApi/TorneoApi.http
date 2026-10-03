@@ -1,0 +1,16 @@
+@host = http://localhost:5269
+
+### Login (organizador demo)
+POST {{host}}/auth/login
+Content-Type: application/json
+
+{ "email": "organizador@torneo.com", "password": "Demo1234!" }
+
+### Listar torneos
+GET {{host}}/tournaments
+
+### Detalle de torneo
+GET {{host}}/tournaments/1
+
+### Partidos de un torneo
+GET {{host}}/matches?tournamentId=1

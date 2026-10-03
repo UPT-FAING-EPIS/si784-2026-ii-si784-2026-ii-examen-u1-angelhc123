@@ -1,0 +1,19 @@
+# .NET
+bin/
+obj/
+*.db
+*.db-shm
+*.db-wal
+TestResults/
+.vs/
+
+# Node
+node_modules/
+dist/
+.env
+.env.local
+
+# Editores / SO
+.idea/
+.DS_Store
+Thumbs.db

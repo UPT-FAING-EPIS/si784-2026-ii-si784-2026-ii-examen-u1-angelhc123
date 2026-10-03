@@ -1,0 +1,8 @@
+{
+  "recommendations": [
+    "ms-dotnettools.csdevkit",
+    "humao.rest-client",
+    "oxc.oxc-vscode",
+    "bierner.markdown-mermaid"
+  ]
+}
