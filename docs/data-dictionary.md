@@ -4,7 +4,7 @@
 
 - **Motor:** PostgreSQL
 - **Tablas:** 6
-- **Generado:** 2026-10-03 02:25 UTC
+- **Generado:** 2026-10-03 02:29 UTC
 
 ## Índice
 
