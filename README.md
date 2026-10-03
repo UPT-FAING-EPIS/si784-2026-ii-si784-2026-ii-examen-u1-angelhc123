@@ -101,11 +101,18 @@ La documentación interactiva completa está en `http://localhost:5269/swagger`.
 |----------|-------------|
 | `VITE_API_URL` | URL pública del backend (ver `frontend/.env.example`). |
 
-## Pendiente
+## Automatizaciones (GitHub Actions)
 
-- [ ] Repositorio en GitHub
-- [ ] Despliegue en Railway (backend + frontend + PostgreSQL) → `deploy.yml`
-- [ ] `infra.yml` (Terraform)
-- [ ] `snyk-semgrep.yml`
-- [ ] `generate-documentation.yml` (diccionario de datos y diagramas Mermaid)
-- [ ] `sonar.yml` (al final)
+| Workflow | Qué hace | Secretos / variables |
+|----------|----------|----------------------|
+| `deploy.yml` | Pruebas del backend, lint y build del frontend, despliegue a Railway con `railway up` y verificación de salud | `RAILWAY_TOKEN` (token de **proyecto**) |
+| `infra.yml` | Terraform (`infra/terraform`): proyecto Railway, PostgreSQL con volumen, backend, frontend, dominios y variables. `plan` / `apply` / `destroy` manual | `RAILWAY_API_TOKEN` (token de **cuenta**), `TF_STATE_PASSPHRASE` |
+| `snyk-semgrep.yml` | Semgrep (SAST), Snyk Code, Snyk Open Source (NuGet/npm) y Snyk Container (ambas imágenes). Reportes HTML/JSON/SARIF como artefactos | `SNYK_TOKEN` |
+| `generate-documentation.yml` | Levanta PostgreSQL, crea el esquema y genera en `docs/` el diccionario de datos y los diagramas ER, de clases, de componentes y de despliegue (Mermaid + SVG) | — |
+| `sonar.yml` | *(pendiente)* | `SONAR_TOKEN` |
+
+Variables opcionales del repositorio (`Settings → Secrets and variables → Actions → Variables`): `RAILWAY_BACKEND_SERVICE`, `RAILWAY_FRONTEND_SERVICE`, `BACKEND_URL`, `FRONTEND_URL`.
+
+## Documentación técnica
+
+Ver [`docs/`](docs/README.md) (generada automáticamente).

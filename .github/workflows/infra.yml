@@ -1,0 +1,150 @@
+name: infra
+
+# Aprovisiona la infraestructura en Railway con Terraform (proyecto, PostgreSQL,
+# backend, frontend, dominios y variables de entorno).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/infra.yml"
+  pull_request:
+    paths:
+      - "infra/terraform/**"
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Acción de Terraform"
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: terraform-state
+  cancel-in-progress: false
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_DIR: infra/terraform
+  ACTION: ${{ github.event.inputs.action || 'plan' }}
+
+jobs:
+  validate:
+    name: Formato y validación
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+      - run: terraform fmt -check -recursive -diff
+      - run: terraform init -backend=false
+      - run: terraform validate
+
+  terraform:
+    name: Terraform ${{ github.event.inputs.action || 'plan' }}
+    needs: validate
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request'
+    env:
+      # Token de CUENTA/WORKSPACE de Railway (no el token de proyecto)
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_API_TOKEN }}
+      STATE_PASSPHRASE: ${{ secrets.TF_STATE_PASSPHRASE }}
+    defaults:
+      run:
+        working-directory: ${{ env.TF_DIR }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verificar secretos
+        run: |
+          if [ -z "$RAILWAY_TOKEN" ] || [ -z "$STATE_PASSPHRASE" ]; then
+            echo "::error::Configure los secretos RAILWAY_API_TOKEN y TF_STATE_PASSPHRASE"
+            exit 1
+          fi
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "~1.9"
+          terraform_wrapper: false
+
+      # Recupera el estado de la última ejecución (artefacto cifrado)
+      - name: Descargar estado previo
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          workflow: infra.yml
+          name: terraform-state
+          path: ${{ env.TF_DIR }}
+          if_no_artifact_found: warn
+          search_artifacts: true
+
+      - name: Descifrar estado
+        run: |
+          if [ -f terraform.tfstate.gpg ]; then
+            gpg --batch --yes --quiet --passphrase "$STATE_PASSPHRASE" -o terraform.tfstate -d terraform.tfstate.gpg
+            echo "Estado previo restaurado."
+          else
+            echo "Sin estado previo: se creará la infraestructura desde cero."
+          fi
+
+      - run: terraform init
+
+      - name: Terraform plan
+        run: |
+          if [ "$ACTION" = "destroy" ]; then
+            terraform plan -destroy -out=tfplan
+          else
+            terraform plan -out=tfplan
+          fi
+          terraform show -no-color tfplan > plan.txt
+          {
+            echo "## Terraform plan ($ACTION)"
+            echo '```'
+            grep -E "^(Plan:|No changes)" plan.txt || tail -5 plan.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Terraform apply
+        if: env.ACTION == 'apply' || env.ACTION == 'destroy'
+        run: terraform apply -auto-approve tfplan
+
+      - name: Salidas
+        if: env.ACTION == 'apply'
+        run: |
+          terraform output
+          {
+            echo "## Infraestructura aprovisionada"
+            echo "- Frontend: $(terraform output -raw frontend_url)"
+            echo "- Backend: $(terraform output -raw backend_url)"
+            echo "- Swagger: $(terraform output -raw swagger_url)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cifrar estado
+        if: always() && (env.ACTION == 'apply' || env.ACTION == 'destroy')
+        run: |
+          if [ -f terraform.tfstate ]; then
+            gpg --batch --yes --quiet --symmetric --cipher-algo AES256 --passphrase "$STATE_PASSPHRASE" -o terraform.tfstate.gpg terraform.tfstate
+          fi
+
+      - name: Guardar estado
+        if: always() && (env.ACTION == 'apply' || env.ACTION == 'destroy')
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-state
+          path: ${{ env.TF_DIR }}/terraform.tfstate.gpg
+          retention-days: 90
+          if-no-files-found: ignore
+
+      - name: Guardar plan
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ env.ACTION }}
+          path: ${{ env.TF_DIR }}/plan.txt

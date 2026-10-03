@@ -1,0 +1,6 @@
+# Copiar a terraform.tfvars para ejecutar en local (no subir terraform.tfvars)
+project_name     = "torneo-iac"
+environment_name = "production"
+# workspace_id   = "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+github_repo      = "UPT-FAING-EPIS/si784-2026-ii-si784-2026-ii-examen-u1-angelhc123"
+github_branch    = "main"

@@ -1,0 +1,113 @@
+name: generate-documentation
+
+# Genera diccionario de datos, diagrama ER, de clases, de componentes y de despliegue (Mermaid)
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/TorneoApi/**"
+      - "frontend/src/**"
+      - "backend/Dockerfile"
+      - "frontend/Dockerfile"
+      - "docs/scripts/**"
+      - ".github/workflows/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: docs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  docs:
+    name: Generar documentación
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: torneo
+          POSTGRES_PASSWORD: torneo_docs
+          POSTGRES_DB: torneo
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U torneo"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://torneo:torneo_docs@localhost:5432/torneo
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # La API crea el esquema (tablas, claves, índices y comentarios) al arrancar
+      - name: Crear esquema de base de datos con la API
+        working-directory: backend/TorneoApi
+        env:
+          Jwt__Key: ${{ github.run_id }}-clave-temporal-solo-para-generar-docs
+          SeedDemoData: "false"
+          PORT: "5080"
+        run: |
+          dotnet build -c Release
+          nohup dotnet run -c Release --no-build --no-launch-profile > api.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:5080/health > /dev/null; then echo "API lista"; break; fi
+            sleep 2
+          done
+          curl -sf http://localhost:5080/health || (cat api.log; exit 1)
+          pkill -f TorneoApi || true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generar Markdown + Mermaid
+        run: |
+          pip install "psycopg[binary]==3.2.*"
+          python docs/scripts/generate_docs.py --db "$DATABASE_URL"
+
+      - name: Renderizar diagramas a SVG (valida la sintaxis Mermaid)
+        run: |
+          cat > /tmp/puppeteer.json <<'EOF'
+          { "args": ["--no-sandbox"] }
+          EOF
+          for f in docs/diagrams/*.mmd; do
+            npx -y @mermaid-js/mermaid-cli@11 -p /tmp/puppeteer.json -i "$f" -o "${f%.mmd}.svg"
+          done
+
+      - name: Resumen
+        run: |
+          {
+            echo "## Documentación generada"
+            echo ""
+            ls -1 docs/*.md docs/diagrams/* | sed 's/^/- /'
+            echo ""
+            cat docs/er-diagram.md | sed -n '/```mermaid/,/```/p'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: documentacion
+          path: docs/
+
+      - name: Commit de la documentación
+        if: github.ref == 'refs/heads/main'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/
+          if git diff --cached --quiet; then
+            echo "Sin cambios en la documentación."
+          else
+            git commit -m "docs: actualizar documentación generada [skip ci]"
+            git push
+          fi

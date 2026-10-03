@@ -1,0 +1,150 @@
+name: snyk-semgrep
+
+# Análisis de seguridad: código (Semgrep + Snyk Code), dependencias (Snyk Open Source)
+# e imágenes de contenedor (Snyk Container). Los reportes quedan como artefactos.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * 1"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  semgrep:
+    name: Semgrep (SAST)
+    runs-on: ubuntu-latest
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v4
+      - name: semgrep scan
+        run: |
+          mkdir -p reports
+          semgrep scan \
+            --config p/default \
+            --config p/csharp \
+            --config p/react \
+            --config p/javascript \
+            --config p/dockerfile \
+            --config p/secrets \
+            --exclude 'docs/' \
+            --metrics off \
+            --error \
+            --sarif-output=reports/semgrep.sarif \
+            --json-output=reports/semgrep.json \
+            --text-output=reports/semgrep.txt
+      - name: Resumen
+        if: always()
+        run: |
+          {
+            echo "## Semgrep"
+            echo '```'
+            if [ -s reports/semgrep.txt ]; then cat reports/semgrep.txt; else echo "Sin hallazgos."; fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reporte-semgrep
+          path: reports/
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true # requiere GitHub Advanced Security en repos privados
+        with:
+          sarif_file: reports/semgrep.sarif
+          category: semgrep
+
+  snyk-code-deps:
+    name: Snyk Code + Open Source
+    runs-on: ubuntu-latest
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Restaurar dependencias
+        run: |
+          dotnet restore backend/Torneo.slnx
+          npm ci --prefix frontend --ignore-scripts
+      - name: Instalar Snyk CLI
+        run: npm install -g snyk snyk-to-html
+      - name: Snyk Open Source (dependencias NuGet y npm)
+        run: |
+          mkdir -p reports
+          snyk test --all-projects --detection-depth=4 --exclude=TorneoApi.Tests \
+            --json-file-output=reports/snyk-deps.json \
+            --sarif-file-output=reports/snyk-deps.sarif
+      - name: Snyk Code (SAST)
+        if: always()
+        run: |
+          snyk code test \
+            --json-file-output=reports/snyk-code.json \
+            --sarif-file-output=reports/snyk-code.sarif
+      - name: Reportes HTML
+        if: always()
+        run: |
+          for f in reports/snyk-*.json; do
+            [ -s "$f" ] && snyk-to-html -i "$f" -o "${f%.json}.html" || true
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reporte-snyk-codigo
+          path: reports/
+
+  snyk-container:
+    name: Snyk Container (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: backend
+          - name: frontend
+            context: frontend
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      IMAGE: torneo-${{ matrix.name }}:${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir imagen
+        run: docker build -t "$IMAGE" ${{ matrix.context }}
+      - name: Instalar Snyk CLI
+        run: npm install -g snyk snyk-to-html
+      - name: snyk container test
+        run: |
+          mkdir -p reports
+          snyk container test "$IMAGE" \
+            --file=${{ matrix.context }}/Dockerfile \
+            --exclude-app-vulns \
+            --json-file-output=reports/snyk-container-${{ matrix.name }}.json \
+            --sarif-file-output=reports/snyk-container-${{ matrix.name }}.sarif
+      - name: Reporte HTML
+        if: always()
+        run: |
+          f=reports/snyk-container-${{ matrix.name }}.json
+          [ -s "$f" ] && snyk-to-html -i "$f" -o "${f%.json}.html" || true
+      - name: Resumen
+        if: always()
+        run: |
+          f=reports/snyk-container-${{ matrix.name }}.json
+          if [ -s "$f" ]; then
+            count=$(jq '[.vulnerabilities[]?] | length' "$f")
+            echo "## Snyk Container ${{ matrix.name }}: $count vulnerabilidades" >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reporte-snyk-container-${{ matrix.name }}
+          path: reports/

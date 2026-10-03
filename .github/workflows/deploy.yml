@@ -1,0 +1,117 @@
+name: deploy
+
+# Prueba y despliega backend y frontend en Railway
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "frontend/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  RAILWAY_ENVIRONMENT: production
+  # Nombres de los servicios en Railway (se pueden sobrescribir con variables del repositorio)
+  BACKEND_SERVICE: ${{ vars.RAILWAY_BACKEND_SERVICE || 'si784-2026-ii-si784-2026-ii-examen-u1-angelhc123' }}
+  FRONTEND_SERVICE: ${{ vars.RAILWAY_FRONTEND_SERVICE || 'joyful-vibrancy' }}
+  BACKEND_URL: ${{ vars.BACKEND_URL || 'https://si784-2026-ii-si784-2026-ii-examen-u1-angelhc123-production.up.railway.app' }}
+  FRONTEND_URL: ${{ vars.FRONTEND_URL || 'https://joyful-vibrancy-production-c69f.up.railway.app' }}
+
+jobs:
+  test-backend:
+    name: Backend - build y pruebas
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+      - name: Pruebas unitarias e integración
+        working-directory: backend
+        run: dotnet test --configuration Release --logger "trx;LogFileName=results.trx" --results-directory TestResults
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: backend-test-results
+          path: backend/TestResults
+
+  build-frontend:
+    name: Frontend - lint y build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - working-directory: frontend
+        run: |
+          npm ci
+          npm run lint
+          npm run build
+        env:
+          VITE_API_URL: ${{ env.BACKEND_URL }}
+
+  deploy-backend:
+    name: Desplegar backend en Railway
+    needs: [test-backend, build-frontend]
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: ${{ env.BACKEND_URL }}/swagger
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Railway CLI
+        run: npm install -g @railway/cli
+      # Se sube el repositorio completo; Railway usa el Root Directory del servicio (/backend)
+      - name: railway up (backend)
+        run: railway up --ci --service "$BACKEND_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --message "GitHub Actions ${GITHUB_SHA::7}"
+      - name: Verificar /health
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf "$BACKEND_URL/health"; then echo; echo "Backend OK"; exit 0; fi
+            sleep 10
+          done
+          echo "El backend no respondió" && exit 1
+
+  deploy-frontend:
+    name: Desplegar frontend en Railway
+    needs: deploy-backend
+    runs-on: ubuntu-latest
+    environment:
+      name: production-frontend
+      url: ${{ env.FRONTEND_URL }}
+    env:
+      RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Instalar Railway CLI
+        run: npm install -g @railway/cli
+      - name: railway up (frontend)
+        run: railway up --ci --service "$FRONTEND_SERVICE" --environment "$RAILWAY_ENVIRONMENT" --message "GitHub Actions ${GITHUB_SHA::7}"
+      - name: Verificar frontend
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sf "$FRONTEND_URL" | grep -q '<div id="root">'; then echo "Frontend OK"; exit 0; fi
+            sleep 10
+          done
+          echo "El frontend no respondió" && exit 1
+      - name: Resumen
+        run: |
+          {
+            echo "## Despliegue completado"
+            echo "- Frontend: $FRONTEND_URL"
+            echo "- Backend: $BACKEND_URL/swagger"
+            echo "- Commit: ${GITHUB_SHA::7}"
+          } >> "$GITHUB_STEP_SUMMARY"
